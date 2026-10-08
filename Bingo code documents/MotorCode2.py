@@ -1,5 +1,5 @@
 import time
-from turtle import setup, speed
+from turtle import delay, setup, speed
 from machine import Pin, I2C # type: ignore
 import math
 
@@ -115,6 +115,40 @@ class MotorDriver:
         self.pwm.setDuty(pwm_pin, 0)
         self.pwm.setLevel(in1, 0)
         self.pwm.setLevel(in2, 0)
+    #-------------------------
+    #Lets try turning
+    #-------------------------
+    def MotorTurn(self, motor, mdir, speed):
+        if motor not in self.MotorPin:
+            raise ValueError("Invalid motor")
+        if mdir not in self.MotorDir:
+            raise ValueError("Invalid direction")
+
+        pwm_pin, in1, in2 = self.MotorPin[motor]
+        dir1, dir2 = self.MotorDir[mdir]
+
+        if self.debug:
+            print(f"{motor} -> PWM:{pwm_pin}, IN1:{in1}, IN2:{in2}")
+            print(f"Direction: {mdir}, Speed: {speed}%")
+
+        self.pwm.setDuty(pwm_pin, speed)
+        self.pwm.setLevel(in1, dir1)
+        self.pwm.setLevel(in2, dir2)
+    def MotorturnLeft(self, speed):
+        self.MotorRun('MA', 'backward', speed)
+        self.MotorRun('MB', 'forward', speed)
+        self.MotorRun('MC', 'backward', speed)
+        self.MotorRun('MD', 'forward', speed)
+    def MotorturnRight(self, speed):
+        self.MotorRun('MA', 'forward', speed)
+        self.MotorRun('MB', 'backward', speed)
+        self.MotorRun('MC', 'forward', speed)
+        self.MotorRun('MD', 'backward', speed)
+    def MotorReverse(self, speed):
+        self.MotorRun('MA', 'backward', speed)
+        self.MotorRun('MB', 'backward', speed)
+        self.MotorRun('MC', 'backward', speed)
+        self.MotorRun('MD', 'backward', speed)
 
 #--------------------------------
 # figure out the how to set up the ultra sonic senor here
@@ -147,7 +181,7 @@ class UltrasonicSensor:
     serial.println(" cm");
 
     delay(1000);
-}
+
 
 # =========================
 # TEST CODE
@@ -214,11 +248,26 @@ if __name__ == '__main__':
 
 user_input = input("Enter a command: ")
 
+
 if user_input.strip().lower() == "go":
     print("Action triggered: Going!")
     m.ALLMotorGo(100)
+
+    if ultrasonic_sensor.measure_distance() < 10:  # Example threshold
+            print("Obstacle detected! Stopping motors.")
+            m.ALLMotorStop()
+
 elif user_input.strip().lower() == "stop":
     print("Action triggered: Stopping!")
     m.ALLMotorStop()
 else:
     print("Waiting for 'go'...")
+
+
+    if user_input.strip().lower() == "turn left":
+    print("Action triggered: Turning Left!")
+    m.MotorturnLeft(100)
+
+    if user_input.strip().lower() == "turn right":
+    print("Action triggered: Turning Right!")
+    m.MotorturnRight(100)
