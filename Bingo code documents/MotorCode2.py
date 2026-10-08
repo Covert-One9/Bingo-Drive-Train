@@ -116,6 +116,38 @@ class MotorDriver:
         self.pwm.setLevel(in1, 0)
         self.pwm.setLevel(in2, 0)
 
+#--------------------------------
+# figure out the how to set up the ultra sonic senor here
+# ---------------------------------
+
+class UltrasonicSensor: 
+    def __init__(self, trigPin=9, echoPin=8):
+        self.trigPin = trigPin
+        self.echoPin = echoPin
+
+    def measure_distance(self):
+        # Implementation for measuring distance
+        pass
+
+    def setup(self):
+        # Implementation for setting up the sensor
+        pass
+
+    def loop(self):
+        # Implementation for the main loop
+        pass
+    digitalWrite(trigPin, LOW);
+
+    duration = pulseIn(echoPin, HIGH); # type: ignore
+
+    distance_cm = duration * 0.034 / 2;
+
+    serial.print("Distance: ");
+    serial.print(distance_cm);
+    serial.println(" cm");
+
+    delay(1000);
+}
 
 # =========================
 # TEST CODE
@@ -167,51 +199,26 @@ if __name__ == '__main__':
         m.MotorRun('MB', 'forward', speed)
         m.MotorRun('MC', 'forward', speed)
         m.MotorRun('MD', 'forward', speed)
-if __name__ == '__main__':
-    m = MotorDriver(debug=True)
+    def m.ALLMotorStop():
+        m.MotorStop('MA')
+        m.MotorStop('MB')
+        m.MotorStop('MC')
+        m.MotorStop('MD') 
 
+    print("All motors forward at 100% for 2 seconds")
+    m.ALLMotorGo(100)
 
-#--------------------------------
-# figure out the how to set up the ultra sonic senor here
-# ---------------------------------
-const int trigPin = 9
-const int echoPin = 8
+    time.sleep(2)
 
-long duration;
-float distance_cm;
+    m.ALLMotorStop()
 
-void setup() {
-    serial.begin(9600);
-    pinMode(trigPin, OUTPUT); # type: ignore
-    pinMode(echoPin, INPUT); # type: ignore
-}
+user_input = input("Enter a command: ")
 
-def digitalWrite(trigPin, HIGH):
-    ...
-
-def delayMicroseconds(arg1):
-    ...
-
-class trigPin:
-    ...
-
-def delay(arg1):
-    ...
-
-viod loop() {
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
-
-    duration = pulseIn(echoPin, HIGH); # type: ignore
-
-    distance_cm = duration * 0.034 / 2;
-
-    serial.print("Distance: ");
-    serial.print(distance_cm);
-    serial.println(" cm");
-
-    delay(1000);
-}
+if user_input.strip().lower() == "go":
+    print("Action triggered: Going!")
+    m.ALLMotorGo(100)
+elif user_input.strip().lower() == "stop":
+    print("Action triggered: Stopping!")
+    m.ALLMotorStop()
+else:
+    print("Waiting for 'go'...")
