@@ -1,31 +1,54 @@
 import time
-from turtle import delay, setup, speed
-from machine import Pin, I2C # type: ignore
 import math
+import machine 
+from machine import Pin, I2C #ignore 
 
+
+# ============================================================
+# PCA9685
+# ============================================================
 
 class PCA9685:
-    __MODE1 = 0x00
-    __PRESCALE = 0xFE
-    __LED0_ON_L = 0x06
+    MODE1 = 0x00
+    PRESCALE = 0xFE
+    LED0_ON_L = 0x06
 
     def __init__(self, address=0x40, debug=False):
-        self.i2c = I2C(0, scl=Pin(21), sda=Pin(20), freq=100000)
+        self.i2c = I2C(
+            0,
+            scl=Pin(21),
+            sda=Pin(20),
+            freq=100000
+        )
+
         self.address = address
         self.debug = debug
 
         if self.debug:
             print("Resetting PCA9685")
 
-        self.write(self.__MODE1, 0x00)
+        self.write(self.MODE1, 0x00)
 
-    def write(self, cmd, value):
-        self.i2c.writeto_mem(self.address, cmd, bytes([value]))
+    def write(self, register, value):
+        self.i2c.writeto_mem(
+            self.address,
+            register,
+            bytes([value])
+        )
+
         if self.debug:
-            print(f"I2C Write: reg=0x{cmd:02X}, value=0x{value:02X}")
+            print(
+                f"I2C Write: reg=0x{register:02X}, "
+                f"value=0x{value:02X}"
+            )
 
-    def read(self, reg):
-        data = self.i2c.readfrom_mem(self.address, reg, 1)
+    def read(self, register):
+        data = self.i2c.readfrom_mem(
+            self.address,
+            register,
+            1
+        )
+
         return data[0]
 
     def setPWMFreq(self, freq):
@@ -36,29 +59,40 @@ class PCA9685:
 
         prescale = int(math.floor(prescaleval + 0.5))
 
-        oldmode = self.read(self.__MODE1)
-        newmode = (oldmode & 0x7F) | 0x10  # sleep
+        oldmode = self.read(self.MODE1)
+        newmode = (oldmode & 0x7F) | 0x10
 
-        self.write(self.__MODE1, newmode)
-        self.write(self.__PRESCALE, prescale)
-        self.write(self.__MODE1, oldmode)
+        # Sleep
+        self.write(self.MODE1, newmode)
 
-        time.sleep(0.005)
-        self.write(self.__MODE1, oldmode | 0x80)
+        # Set prescaler
+        self.write(self.PRESCALE, prescale)
+
+        # Wake up
+        self.write(self.MODE1, oldmode)
+
+        time.sleep_ms(5)
+
+        # Restart
+        self.write(self.MODE1, oldmode | 0x80)
 
         if self.debug:
             print(f"PWM frequency set to {freq} Hz")
 
     def setPWM(self, channel, on, off):
-        base = self.__LED0_ON_L + 4 * channel
+        base = self.LED0_ON_L + (4 * channel)
+
         self.write(base, on & 0xFF)
-        self.write(base + 1, on >> 8)
+        self.write(base + 1, (on >> 8) & 0xFF)
+
         self.write(base + 2, off & 0xFF)
-        self.write(base + 3, off >> 8)
+        self.write(base + 3, (off >> 8) & 0xFF)
 
     def setDuty(self, channel, percent):
         percent = max(0, min(100, percent))
+
         value = int(percent * 4095 / 100)
+
         self.setPWM(channel, 0, value)
 
     def setLevel(self, channel, value):
@@ -68,14 +102,22 @@ class PCA9685:
             self.setPWM(channel, 0, 0)
 
 
+# ============================================================
+# MOTOR DRIVER
+# ============================================================
+
 class MotorDriver:
+
     def __init__(self, debug=False):
         self.debug = debug
 
         self.pwm = PCA9685(debug=debug)
-        self.pwm.setPWMFreq(1000)  # ✅ Good for DC motors
 
-        # Motor mapping: PWM, IN1, IN2
+        # 1000 Hz PWM
+        self.pwm.setPWMFreq(1000)
+
+        # Motor mapping:
+        # motor: (PWM, IN1, IN2)
         self.MotorPin = {
             'MA': (0, 1, 2),
             'MB': (3, 4, 5),
@@ -83,191 +125,312 @@ class MotorDriver:
             'MD': (9, 10, 11)
         }
 
-        # Direction mapping
         self.MotorDir = {
             'forward': (0, 1),
             'backward': (1, 0)
         }
 
-    def MotorRun(self, motor, mdir, speed):
+    # --------------------------------------------------------
+    # Run one motor
+    # --------------------------------------------------------
+
+    def MotorRun(self, motor, direction, speed):
+
         if motor not in self.MotorPin:
             raise ValueError("Invalid motor")
-        if mdir not in self.MotorDir:
+
+        if direction not in self.MotorDir:
             raise ValueError("Invalid direction")
 
         pwm_pin, in1, in2 = self.MotorPin[motor]
-        dir1, dir2 = self.MotorDir[mdir]
+
+        dir1, dir2 = self.MotorDir[direction]
+
+        speed = max(0, min(100, speed))
 
         if self.debug:
-            print(f"{motor} -> PWM:{pwm_pin}, IN1:{in1}, IN2:{in2}")
-            print(f"Direction: {mdir}, Speed: {speed}%")
+            print(
+                f"{motor}: direction={direction}, "
+                f"speed={speed}%"
+            )
 
         self.pwm.setDuty(pwm_pin, speed)
+
         self.pwm.setLevel(in1, dir1)
         self.pwm.setLevel(in2, dir2)
 
+    # --------------------------------------------------------
+    # Stop one motor
+    # --------------------------------------------------------
+
     def MotorStop(self, motor):
+
         if motor not in self.MotorPin:
             return
 
         pwm_pin, in1, in2 = self.MotorPin[motor]
 
         self.pwm.setDuty(pwm_pin, 0)
+
         self.pwm.setLevel(in1, 0)
         self.pwm.setLevel(in2, 0)
-    #-------------------------
-    #Lets try turning
-    #-------------------------
-    def MotorTurn(self, motor, mdir, speed):
-        if motor not in self.MotorPin:
-            raise ValueError("Invalid motor")
-        if mdir not in self.MotorDir:
-            raise ValueError("Invalid direction")
 
-        pwm_pin, in1, in2 = self.MotorPin[motor]
-        dir1, dir2 = self.MotorDir[mdir]
+    # --------------------------------------------------------
+    # All motors forward
+    # --------------------------------------------------------
 
-        if self.debug:
-            print(f"{motor} -> PWM:{pwm_pin}, IN1:{in1}, IN2:{in2}")
-            print(f"Direction: {mdir}, Speed: {speed}%")
+    def ALLMotorGo(self, speed):
 
-        self.pwm.setDuty(pwm_pin, speed)
-        self.pwm.setLevel(in1, dir1)
-        self.pwm.setLevel(in2, dir2)
-    def MotorturnLeft(self, speed):
+        self.MotorRun('MA', 'forward', speed)
+        self.MotorRun('MB', 'forward', speed)
+        self.MotorRun('MC', 'forward', speed)
+        self.MotorRun('MD', 'forward', speed)
+
+    # --------------------------------------------------------
+    # All motors backward
+    # --------------------------------------------------------
+
+    def ALLMotorReverse(self, speed):
+
+        self.MotorRun('MA', 'backward', speed)
+        self.MotorRun('MB', 'backward', speed)
+        self.MotorRun('MC', 'backward', speed)
+        self.MotorRun('MD', 'backward', speed)
+
+    # --------------------------------------------------------
+    # Stop all motors
+    # --------------------------------------------------------
+
+    def ALLMotorStop(self):
+
+        self.MotorStop('MA')
+        self.MotorStop('MB')
+        self.MotorStop('MC')
+        self.MotorStop('MD')
+
+    # --------------------------------------------------------
+    # Turn left
+    # --------------------------------------------------------
+
+    def MotorTurnLeft(self, speed):
+
         self.MotorRun('MA', 'backward', speed)
         self.MotorRun('MB', 'forward', speed)
         self.MotorRun('MC', 'backward', speed)
         self.MotorRun('MD', 'forward', speed)
-    def MotorturnRight(self, speed):
+
+    # --------------------------------------------------------
+    # Turn right
+    # --------------------------------------------------------
+
+    def MotorTurnRight(self, speed):
+
         self.MotorRun('MA', 'forward', speed)
         self.MotorRun('MB', 'backward', speed)
         self.MotorRun('MC', 'forward', speed)
         self.MotorRun('MD', 'backward', speed)
-    def MotorReverse(self, speed):
-        self.MotorRun('MA', 'backward', speed)
-        self.MotorRun('MB', 'backward', speed)
-        self.MotorRun('MC', 'backward', speed)
-        self.MotorRun('MD', 'backward', speed)
 
-#--------------------------------
-# figure out the how to set up the ultra sonic senor here
-# ---------------------------------
 
-class UltrasonicSensor: 
+# ============================================================
+# ULTRASONIC SENSOR
+# ============================================================
+
+class UltrasonicSensor:
+
     def __init__(self, trigPin=9, echoPin=8):
-        self.trigPin = trigPin
-        self.echoPin = echoPin
+
+        self.trig = Pin(trigPin, Pin.OUT)
+        self.echo = Pin(echoPin, Pin.IN)
+
+        # Make sure trigger starts LOW
+        self.trig.value(0)
 
     def measure_distance(self):
-        # Implementation for measuring distance
-        pass
 
-    def setup(self):
-        # Implementation for setting up the sensor
-        pass
+        # Make sure trigger is LOW
+        self.trig.value(0)
+        time.sleep_us(2)
 
-    def loop(self):
-        # Implementation for the main loop
-        pass
-    digitalWrite(trigPin, LOW);
+        # Send 10 us trigger pulse
+        self.trig.value(1)
+        time.sleep_us(10)
+        self.trig.value(0)
 
-    duration = pulseIn(echoPin, HIGH); # type: ignore
+        try:
+            # Measure HIGH pulse duration
+            duration = time_pulse_us(
+                self.echo,
+                1,
+                30000
+            )
 
-    distance_cm = duration * 0.034 / 2;
+        except Exception:
+            return None
 
-    serial.print("Distance: ");
-    serial.print(distance_cm);
-    serial.println(" cm");
+        # Timeout/error
+        if duration < 0:
+            return None
 
-    delay(1000);
+        # Speed of sound:
+        # approximately 0.0343 cm/us
+        distance_cm = (duration * 0.0343) / 2
+
+        return distance_cm
 
 
-# =========================
-# TEST CODE
-# =========================
-if __name__ == '__main__':
-    m = MotorDriver(debug=True)
+# ============================================================
+# MAIN PROGRAM
+# ============================================================
 
-    print("Motor driver test")
+def main():
+
+    print("Starting robot...")
+
+    # --------------------------------------------------------
+    # Create motor driver
+    # --------------------------------------------------------
+
+    motor = MotorDriver(debug=True)
+
+    # --------------------------------------------------------
+    # Create ultrasonic sensor
+    # --------------------------------------------------------
+
+    ultrasonic_sensor = UltrasonicSensor(
+        trigPin=9,
+        echoPin=8
+    )
+
+    print("Robot ready.")
 
     try:
-        print("Motor A forward at 100% for 2 seconds")
 
-        m.MotorRun('MA', 'forward', 100)
-        time.sleep(2)  # ✅ timing handled here
-        m.MotorStop('MA')
+        while True:
 
-        time.sleep(1)
+            user_input = input(
+                "\nEnter command "
+                "(go, stop, left, right, reverse, distance, quit): "
+            )
 
-        print("Motor B foreward at 100% for 2 seconds")
+            command = user_input.strip().lower()
 
-        m.MotorRun('MB', 'backward', 100)
-        time.sleep(2)
-        m.MotorStop('MB')
-        
-        time.sleep(1)
-        
-        print("Motor C forward at 100% for 2 seconds")
-        
-        m.MotorRun('MC', 'backward', 100)
-        time.sleep(3)
-        m.MotorStop('MC')
-        
-        time.sleep(1)
+            # =================================================
+            # GO
+            # =================================================
 
-        print("Motor D forward at 100% for 2 seconds")
-        
-        m.MotorRun('MD', 'backward', 100)
-        time.sleep(3)
-        m.MotorStop('MD')
+            if command == "go":
+
+                distance = ultrasonic_sensor.measure_distance()
+
+                print("Distance:", distance, "cm")
+
+                if distance is not None and distance < 10:
+
+                    print(
+                        "Obstacle detected! "
+                        "Stopping motors."
+                    )
+
+                    motor.ALLMotorStop()
+
+                else:
+
+                    print("Going forward!")
+
+                    motor.ALLMotorGo(100)
+
+            # =================================================
+            # STOP
+            # =================================================
+
+            elif command == "stop":
+
+                print("Stopping!")
+
+                motor.ALLMotorStop()
+
+            # =================================================
+            # TURN LEFT
+            # =================================================
+
+            elif command == "left":
+
+                print("Turning left!")
+
+                motor.MotorTurnLeft(100)
+
+            # =================================================
+            # TURN RIGHT
+            # =================================================
+
+            elif command == "right":
+
+                print("Turning right!")
+
+                motor.MotorTurnRight(100)
+
+            # =================================================
+            # REVERSE
+            # =================================================
+
+            elif command == "reverse":
+
+                print("Reversing!")
+
+                motor.ALLMotorReverse(100)
+
+            # =================================================
+            # DISTANCE
+            # =================================================
+
+            elif command == "distance":
+
+                distance = ultrasonic_sensor.measure_distance()
+
+                if distance is None:
+                    print("Ultrasonic sensor timeout.")
+
+                else:
+                    print(
+                        "Distance:",
+                        distance,
+                        "cm"
+                    )
+
+            # =================================================
+            # QUIT
+            # =================================================
+
+            elif command == "quit":
+
+                print("Stopping robot.")
+
+                motor.ALLMotorStop()
+
+                break
+
+            # =================================================
+            # UNKNOWN COMMAND
+            # =================================================
+
+            else:
+
+                print(
+                    "Unknown command. "
+                    "Use go, stop, left, right, "
+                    "reverse, distance, or quit."
+                )
 
     except KeyboardInterrupt:
-        print("Stopped")
-        
-        m.MotorStop('MD')
+
+        print("\nEmergency stop!")
+
+        motor.ALLMotorStop()
 
 
-    def m.ALLMotorGo(speed):
-        m.MotorRun('MA', 'forward', speed)
-        m.MotorRun('MB', 'forward', speed)
-        m.MotorRun('MC', 'forward', speed)
-        m.MotorRun('MD', 'forward', speed)
-    def m.ALLMotorStop():
-        m.MotorStop('MA')
-        m.MotorStop('MB')
-        m.MotorStop('MC')
-        m.MotorStop('MD') 
+# ============================================================
+# PROGRAM START
+# ============================================================
 
-    print("All motors forward at 100% for 2 seconds")
-    m.ALLMotorGo(100)
-
-    time.sleep(2)
-
-    m.ALLMotorStop()
-
-user_input = input("Enter a command: ")
-
-
-if user_input.strip().lower() == "go":
-    print("Action triggered: Going!")
-    m.ALLMotorGo(100)
-
-    if ultrasonic_sensor.measure_distance() < 10:  # Example threshold
-            print("Obstacle detected! Stopping motors.")
-            m.ALLMotorStop()
-
-elif user_input.strip().lower() == "stop":
-    print("Action triggered: Stopping!")
-    m.ALLMotorStop()
-else:
-    print("Waiting for 'go'...")
-
-
-    if user_input.strip().lower() == "turn left":
-    print("Action triggered: Turning Left!")
-    m.MotorturnLeft(100)
-
-    if user_input.strip().lower() == "turn right":
-    print("Action triggered: Turning Right!")
-    m.MotorturnRight(100)
+if __name__ == '__main__':
+    main()
