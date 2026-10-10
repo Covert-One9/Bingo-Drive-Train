@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Computer Controller</title>
+
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #101827;
+            color: white;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .dashboard {
+            max-width:500px;
+            margin:auto;
+            background: #1e293b;
+            padding: 25px;
+            border-radius: 16px;
+        }
+
+        h1 { color:#60a5fa;}
+
+        button {
+            padding: 12px 18px;
+            margin: 6px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+            background: #3b82f6;
+            color: white;
+        }
+
+        button:hover {background: #2563eb;}
+
+        button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        input {
+            padding: 12pf;
+            width: 65%;
+            border-radius: 8px;
+            border: none;
+            margin-top: 10px;
+        }
+
+
+        #log {
+            background: #0f172a;
+            padding: 112px;
+            border-radius: 8px;
+            height: 140px;
+            overflow-y: auto;
+            text-align: left;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-size: 13px;
+            
+        }
+
+        .status { color: #fbbf24;}
+
+    </style>
+</head>
+
+
+<body>
+    <div class ="dashboard">
+        <h1>Pico Remote</h1>
+        <p class="status" id="status">Disconnected</p>
+
+        <button id="connectBtn" onclick="connectPico()">
+            Connect to Pico
+        </button>
+
+        <hr>
+
+        <h3>Onboard LED</h3>
+        <button onclick="sendCommand('LED ON')">Turn LED On</button>
+        <button onclick="sendCommand('LED OFF')">Turn LED Off</button>
+
+        <h3>GPIO Pins</h3>
+        <button onclick="sendCommand('Pin2 ON')">Pin 2 On</button>
+        <button onclick="sendCommand('Pin2 OFF')">Pin 2 Off</button>
+        <br>
+        <button onclick="sendCommand('Pin3 ON')">Pin 3 On</button>
+        <button onclick="sendCommand('Pin3 OFF')">Pin 3 Off</button>
+        <br>
+        <button onclick="sendCommand('Pin4 ON')">Pin 4 On</button>
+        <button onclick="sendCommand('Pin4 OFF')">Pin 4 Off</button>
+
+
+        <h3>Device Status</h3>
+        <button onclick="sendCommand('STATUS')">Get Status</button>
+
+        <h3>Custom Commands</h3>
+        <input id="command" placeholder="Enter a command">
+        <button onclick="sendCustomCommand()">Send Command</button>
+
+        <h3>Activity Log</h3>
+        <div id="log">Ready to Connect</div>
+    </div>
+    
+
+    <script>
+        // Nordic UART Service UUIDs
+    const SERVICE_UUID =
+      "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+
+    const RX_UUID =
+      "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+
+    const TX_UUID =
+      "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+    let device;
+    let txCharacteristic;
+    let rxCharacteristic;
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    function log(message) {
+      const logDiv = document.getElementById("log");
+      logDiv.textContent += "\n" + message;
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function setStatus(message) {
+      document.getElementById("status").textContent = message;
+    }
+
+    async function connectPico() {
+        if (!navigator.bluetooth) {
+            log("Web Bluetooth API is not available in this browser.");
+            return;
+        }
+
+        try {
+            setStatus("Choose your Pico...");
+
+            device = await navigator.bluetooth.requestDevice({
+              filters: [{ name: "PicoRemote" }],
+              optionalServices: [SERVICE_UUID]
+            });
+
+            device.addEventListener(
+              "gattserverdisconnected",
+              () => {
+                txCharacteristic = null;
+                rxCharacteristic = null;
+                setStatus("Disconnected");
+                log("Bluetooth disconnected.");
+              }
+            );
+
+            setStatus("Connecting...");
+            const server = await device.gatt.connect();
+
+            const service =
+              await server.getPrimaryService(SERVICE_UUID);
+
+            rxCharacteristic =
+              await service.getCharacteristic(RX_UUID);
+
+            txCharacteristic =
+              await service.getCharacteristic(TX_UUID);
+
+            await txCharacteristic.startNotifications();
+
+            txCharacteristic.addEventListener(
+              "characteristicvaluechanged",
+              event => {
+                const value = event.target.value;
+                const message = decoder.decode(value);
+                log("Pico: " + message);
+              }
+            );
+
+            setStatus("Connected to " + device.name);
+            log("Connected successfully!");
+
+        } catch (error) {
+            setStatus("Connection failed");
+            log("Error: " + error.message);
+        }
+    }
+
+    async function sendCommand(command) {
+      if (!rxCharacteristic) {
+        log("Connect to the Pico first.");
+        return;
+      }
+
+      try {
+        const data = encoder.encode(command + "\n");
+
+        if (rxCharacteristic.properties.write) {
+          await rxCharacteristic.writeValueWithResponse(data);
+        } else if (rxCharacteristic.properties.writeWithoutResponse) {
+          await rxCharacteristic.writeValueWithoutResponse(data);
+        } else {
+          throw new Error("RX characteristic does not support writing.");
+        }
+
+        log("Sent: " + command);
+
+      } catch (error) {
+        log("Send failed: " + error.message);
+      }
+    }
+
+    function sendCustomCommand() {
+      const input = document.getElementById("command");
+      const command = input.value.trim();
+
+      if (command) {
+        sendCommand(command);
+        input.value = "";
+      }
+    }
+
+    document.getElementById("command").addEventListener(
+      "keydown",
+      event => {
+        if (event.key === "Enter") {
+          sendCustomCommand();
+        }
+      }
+    );
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
