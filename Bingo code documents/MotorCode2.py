@@ -276,6 +276,68 @@ class UltrasonicSensor:
         distance_cm = (duration * 0.0343) / 2
 
         return distance_cm
+<<<<<<< Updated upstream
+=======
+#=============================================================
+#LCD Display
+#=============================================================
+from machine import Pin, SoftI2C
+from pico_i2c_lcd import I2cLcd
+
+class LCD_Display:
+    I2C_ADDR = 0x27
+    I2C_NUM_ROWS = 2
+    I2C_NUM_COLS = 16
+
+    def __init__(self):
+        self.12c = SoftI2C(
+            sda=pin(4)
+            scl=pin(5)
+            freq=100000
+        )
+        print("LCD I2C devices", self.i2c.scan())
+
+        self.lcd =I2cLcd(
+            self.i2c,
+            self.I2c_ADDR,
+            self.I2c_NUM_ROWS,
+            self.I2c_NUM_COLS
+        )
+
+    def display_message(self, message, line=0):
+        if line < 0 or line >= self.I2C_NUM_ROWS:
+            raise ValueError("Invalid line number")
+
+        self.lcd.move_to(0, line)
+        text = str(message)[:self.I2C_NUM_COLS].ljust(
+            self.I2C_NUM_COLS
+        )
+        self.lcd.putstr(text)
+
+    def clear(self):
+        self.lcd.clear()
+
+#=============================================================
+#Test display
+#=============================================================
+    def test_display():
+    from time import sleep
+
+    lcd = LCD_Display()
+    try:
+        while True:
+            lcd.display_message("Hello, World!", 0)
+            lcd.display_message("Distance: 10cm", 1)
+            sleep(2)
+            lcd.clear()
+            sleep(1)
+    except KeyboardInterrupt:
+        lcd.clear()
+        print("Exiting test display.")
+
+
+
+>>>>>>> Stashed changes
 
 
 # ============================================================
@@ -410,6 +472,29 @@ def main():
                 break
 
             # =================================================
+<<<<<<< Updated upstream
+=======
+            # TEST DISPLAY
+            # =================================================
+
+            elif command == "test_display":
+
+                print("Test display activated.")
+
+            # =================================================
+            # COURSE MODE
+            # =================================================
+
+            elif command == "course":
+
+                course_mode(motor)
+
+            elif command == "test_display":
+                print("Test display activatd")
+                test_display()
+
+            # =================================================
+>>>>>>> Stashed changes
             # UNKNOWN COMMAND
             # =================================================
 
@@ -421,11 +506,43 @@ def main():
                     "reverse, distance, or quit."
                 )
 
+
+
+
     except KeyboardInterrupt:
 
         print("\nEmergency stop!")
 
         motor.ALLMotorStop()
+
+<<<<<<< Updated upstream
+=======
+    finally:
+        motor.ALLMotorStop()
+        print("motors Stopped.")
+
+if __name__ == "__main__":
+    main()
+#=============================================================
+#Couse mode
+#=============================================================
+def course_mode(motor):
+    print("Course mode activated.")
+
+    try:
+        motor.ALLMotorGo(50)
+        time.sleep(2)
+
+        motor.MotorTurnLeft(50)
+        time.sleep(1)
+
+        motor.ALLMotorGo(50)
+        time.sleep(5)
+
+    finally:
+        motor.ALLMotorStop()
+        print("Course mode finished. Motors stopped.")
+>>>>>>> Stashed changes
 
 
 # ============================================================
