@@ -8,4 +8,14 @@ Course mode means if I put a battery on it then set up a course I can have it fo
 
 I added a LCD mode to add later in the future and the ultrasonic senor is still in testing
 
-The controller mode and html file was a though I had to control the robot with bluetooth but that has not been working too well
+The controller option branch houses the controller mode code
+
+  The controller mode and html file was a though I had to control the robot with bluetooth but that has not been working too well
+
+the Motor drive 2,O branch houses the basics drive code
+  this has been greatly expanded on and what i will demonstrate
+
+
+  demonstration
+
+  
